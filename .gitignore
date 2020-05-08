@@ -1,0 +1,11 @@
+results/
+terraform.tfvars
+terraform.tfstate*
+.terraform*
+.vagrant
+*~
+*#
+.#*
+\#*#
+.*.sw[a-z]
+*.un~

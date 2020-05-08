@@ -1,0 +1,212 @@
+# Progress Output looks strange emited by the supervisor
+# so we will turn it off because some of the clustering
+# commands print to the progress stream
+$ProgressPreference="SilentlyContinue"
+
+# It will be usefull to pick a "primary" and list of all secondary members
+# If we have already setup the availability group in a previous run, we will
+# use whoever is the current primary node. Otherwise, we will just choose the
+# first member as primary since that will be the same on all instances
+$members = @()
+{{~#eachAlive svc.members as |m|}}
+    $members += '{{m.sys.hostname}}'
+{{~/eachAlive}}
+$primary = $members[0]
+
+# If the availability group was previously setup. We can use the owner node
+# of the cluster group to find who is primary now
+$group = Invoke-Command -Computer localhost {
+  $g = Get-ClusterGroup -Name {{cfg.availability_group_name}} -ErrorAction SilentlyContinue
+  if($g -ne $null) {
+    $g.OwnerNode.Name
+  }
+}
+
+# If there is no availability group yet, just use the first one
+if($group -ne $null) {
+  write-host "$group is primary"
+  $primary = $group
+}
+
+# The secondaries are whoever is not primary...duh
+$secondary = @()
+foreach($m in $members) {
+  if($m -ne $primary) {
+      $secondary += $m
+  }
+}
+
+$instance="{{cfg.instance}}"
+$agName = "{{cfg.availability_group_name}}"
+
+Import-Module "{{pkgPathFor "core/dsc-core"}}/Modules/DscCore"
+Import-Module SqlServer -DisableNameChecking
+
+# We are about to configure all of the always on availability group
+# plumbning. We will drive this from the primary node so all other
+# nodes do nothing from this point forward
+if($env:ComputerName -eq $primary) {
+    $domain = (Get-ciminstance win32_computersystem).Domain.Split(".")[0]
+    $login = "$domain\${env:ComputerName}`$"
+
+    # we already know we have enabled HADR for ourselves (primary)
+    # but we cant proceed to join everyone to the availability group
+    # until it has been enabled for everyone
+    foreach($s in $secondary) {
+        Write-Host "Waiting for HADR to be enabled on $s"
+        $hadrEnabled = $false
+        while(!$hadrEnabled) {
+            Start-Sleep -Seconds 1
+            $svr = New-Object ('Microsoft.SqlServer.Management.Smo.Server') "$s\$instance"
+            $hadrEnabled = $svr.IsHadrEnabled
+        }
+    }
+
+    # The DSC will run under the machine account so we need to add
+    # that login as a sysadmin to the secondary replicas
+    foreach($s in $secondary) {
+        if(!(Get-SqlLogin -LoginName $login -ServerInstance "$s\$instance" -ErrorAction SilentlyContinue)) {
+            Write-Host "Adding machine account login to $s"
+            Add-SqlLogin -LoginName $login -LoginType WindowsUser -ServerInstance "$s\$instance" -Enable
+
+            $svr = New-Object ('Microsoft.SqlServer.Management.Smo.Server') "$s\$instance"
+            $svrole = $svr.Roles | where {$_.Name -eq 'sysadmin'}
+            $svrole.AddMember($login)
+        }
+    }
+
+    # Create an empty database for each db if it does not already exist
+    $svr = New-Object ('Microsoft.SqlServer.Management.Smo.Server') "$env:ComputerName\$instance"
+    $databases = @({{cfg.databases}})
+    foreach($db in $databases) {
+        if($db.Length -gt 0 -and (!$svr.Databases[$db])) {
+            Write-Host "Creating empty database for $db"
+            (New-Object -TypeName Microsoft.SqlServer.Management.Smo.Database -argumentlist $svr, $db).Create()
+        }
+    }
+
+    # This DSC configuration sets up all the always on plumbing and also
+    # backs up the db and restores it to the secondary DBs
+    Start-DscCore (Join-Path {{pkg.svc_config_path}} group.ps1) NewAvailabilityGroup
+}
+
+Write-Host "All DSC Completed"
+
+# dsc does not configure the probe port so we do that here
+if($env:ComputerName -eq $primary -and ('{{cfg.availability_group_ip}}' -ne '')) {
+    Invoke-Command -Computer localhost {
+        $ProgressPreference="SilentlyContinue"
+        $p = Get-ClusterResource '{{cfg.availability_group_name}}_{{cfg.availability_group_ip}}' | Get-ClusterParameter -Name ProbePort
+        if($p.Value -ne '{{cfg.probe_port}}') {
+            Write-Host "Adding probe port {{cfg.probe_port}} to {{cfg.availability_group_name}}_{{cfg.availability_group_ip}}"
+            Get-ClusterResource '{{cfg.availability_group_name}}_{{cfg.availability_group_ip}}' | Set-ClusterParameter -Name ProbePort -Value {{cfg.probe_port}}
+            Write-Host "Stopping IP Resource"
+            Stop-ClusterResource '{{cfg.availability_group_name}}_{{cfg.availability_group_ip}}' | Out-Null
+            Write-Host "Starting IP Resource"
+            Start-ClusterResource '{{cfg.availability_group_name}}_{{cfg.availability_group_ip}}' | Out-Null
+            Write-Host "Starting Cluster Group"
+            Start-ClusterGroup '{{cfg.availability_group_name}}' | Out-Null
+        }
+    }
+}
+
+# adjust failover threshold if needed
+if($env:ComputerName -eq $primary) {
+    Invoke-Command -Computer localhost {
+        $group = Get-ClusterGroup -Name {{cfg.availability_group_name}}
+        if('{{cfg.availability_group_failover_threshold}}' -ne $group.FailoverThreshold) {
+            Write-Host "Changing failover threshold to {{cfg.availability_group_failover_threshold}}"
+            $group.FailoverThreshold = {{cfg.availability_group_failover_threshold}}
+        }
+    }
+}
+
+Write-Host "Availability group configuration complete!"
+
+# CU Update
+
+# Install the update on the current node. Before updating, switch the primary node
+# to manual failover mode so there is not risk of us being failed over to in the 
+# middle of the update.
+function Install-Update($PrimaryReplica) {
+  Write-Host "Setting Failure mode of $primaryReplica to Manual"
+  Set-SqlAvailabilityReplica -FailoverMode Manual -Path "SQLSERVER:\Sql\$PrimaryReplica\AvailabilityGroups\$agName\AvailabilityReplicas\$($PrimaryReplica.Replace('\', '%5C'))"
+  Write-Host "Patching with {{pkg.version}} update..."
+  Start-Process {{cfg.cu_media_dir}}\update.exe -ArgumentList "/q /IAcceptSQLServerLicenseTerms /Action=Patch /AllInstances" -Wait
+  Write-Host "patching complete"
+}
+
+# Wait for all availability databases to be in a synchronized state.
+# This is importand before failing over to the target because you never want
+# to fail over to a database that is not synchronized.
+function Wait-DatabaseSynchronized($TargetReplica) {
+  $databases = @({{cfg.databases}})
+  $svr = New-Object ('Microsoft.SqlServer.Management.Smo.Server') $TargetReplica
+  foreach($db in $databases) {
+    Write-Host "Waiting for $db synchronize with primary on $TargetReplica..."
+    while($svr.Databases[$db].AvailabilityDatabaseSynchronizationState -ne 'Synchronized') {
+      Start-Sleep -Seconds 5
+      $svr = New-Object ('Microsoft.SqlServer.Management.Smo.Server') $TargetReplica
+    }
+    Write-Host "Synchronized!"
+  }
+}
+
+# This will perform a sql server update if necessary.
+# We expect to be in one of 3 possible states:
+# 1. We already have the update version installed. If this is the case, do nothing.
+# 2. We need updating and we are a secondary replica. If so put the primary replica
+#    in manual failover mode and update ourselves.
+# 3. We need an update and we are the primary replica. If this is the case, first
+#    wait for all secondary replicas to be updated. Assuming all replicas are
+#    running under this same plan, we should not have to do anything for them to
+#    be updated. They should simply update themselves according to the above logic
+#    when their package updates. Once they are all updated, fail over to the secondary
+#    replica, then update ourself and finally fail back to ourself.
+$svr = New-Object ('Microsoft.SqlServer.Management.Smo.Server') "$env:ComputerName\$instance"
+if('{{pkg.version}}' -ne $svr.Version.ToString()) {
+  Write-Host "Starting update process from $($svr.Version.ToString()) to {{pkg.version}}"
+  $primaryReplica = $svr.AvailabilityGroups['{{cfg.availability_group_name}}'].PrimaryReplicaServerName
+  if($primaryReplica -eq "$env:ComputerName\$instance") {
+    Write-Host "I am the primary replica $primaryReplica"
+
+    # wait for all secondaries to update
+    $replica = $null
+    foreach($m in $members) {
+      if($m -ne $env:ComputerName) {
+        $replica = New-Object ('Microsoft.SqlServer.Management.Smo.Server') "$m\$instance"
+        Write-Host "Waiting for $m to update to {{pkg.version}}..."
+        while($null -eq $replica.Version -or ($replica.Version.ToString() -ne '{{pkg.version}}')) {
+          Start-Sleep -Seconds 5
+          $replica = New-Object ('Microsoft.SqlServer.Management.Smo.Server') "$m\$instance"
+        }
+        Write-Host "updated!"
+      }
+    }
+    Write-Host "All secondary replicas are updated"
+
+    # We are about to fail over. Make sure our target is synchronized first.
+    Wait-DatabaseSynchronized $replica.Name
+    
+    Write-Host "Failing over to $($replica.Name)"
+    Switch-SqlAvailabilityGroup -Path "SQLSERVER:\Sql\$($replica.Name)\AvailabilityGroups\$agName" -Force
+    Install-Update $replica.Name
+
+    # wait four ourself to synchronize before failing back
+    Wait-DatabaseSynchronized $svr.Name
+
+    Write-Host "Failing back to $primaryReplica"
+    Switch-SqlAvailabilityGroup -Path "SQLSERVER:\Sql\$primaryReplica\AvailabilityGroups\$agName" -Force
+    
+    # Return everyone to their original failover mode. Automatic is the default.
+    Write-Host "Reseting $primaryReplica to {{cfg.failover_mode}} failover mode"
+    Set-SqlAvailabilityReplica -FailoverMode {{cfg.failover_mode}} -Path "SQLSERVER:\Sql\$PrimaryReplica\AvailabilityGroups\$agName\AvailabilityReplicas\$($PrimaryReplica.Replace('\', '%5C'))"
+    Write-Host "Reseting $($replica.Name) to {{cfg.failover_mode}} failover mode"
+    Set-SqlAvailabilityReplica -FailoverMode {{cfg.failover_mode}} -Path "SQLSERVER:\Sql\$PrimaryReplica\AvailabilityGroups\$agName\AvailabilityReplicas\$($replica.Name.Replace('\', '%5C'))"
+  } else {
+    Write-Host "I am a secondary replica. Primary is $primaryReplica"
+    Install-Update $primaryReplica
+  }
+} else {
+  Write-Host "All up to date on {{pkg.version}}"
+}

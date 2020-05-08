@@ -1,0 +1,58 @@
+Invoke-Command -ComputerName localhost -EnableNetworkAccess {
+    $ProgressPreference="SilentlyContinue"
+    Write-Host "Checking for nuget package provider..."
+    if(!(Get-PackageProvider -Name nuget -ErrorAction SilentlyContinue -ListAvailable)) {
+        Write-Host "Installing Nuget provider..."
+        Install-PackageProvider -Name NuGet -Force | Out-Null
+    }
+    Write-Host "Checking for SqlServer PS module..."
+    if(!(Get-Module SqlServer -ListAvailable)) {
+        Write-Host "Installing SqlServer PS Module..."
+        Install-Module SqlServer -Force -AllowClobber | Out-Null
+    }
+    Write-Host "Checking for xNetworking PS module..."
+    if(!(Get-Module xNetworking -ListAvailable)) {
+        Write-Host "Installing xNetworking PS Module..."
+        Install-Module xNetworking -Force | Out-Null
+    }
+    Write-Host "Checking for SqlServerDsc PS module..."
+    if(!(Get-Module SqlServerDsc -ListAvailable)) {
+        Write-Host "Installing SqlServerDsc PS Module..."
+        Install-Module SqlServerDsc -Force | Out-Null
+    }
+}
+
+Write-Host "Checking for SqlServer PS module in core environment..."
+if(!(Get-Module SqlServer -ListAvailable)) {
+    Write-Host "Installing SqlServer PS Module in core environment..."
+    Install-Module SqlServer -Force -Scope AllUsers
+}
+
+# If the sql instance data is not present, install a new instance
+if (!(Test-Path {{pkg.svc_data_path}}/mssql14.{{cfg.instance}})) {
+    $setupPath = "{{cfg.install_media_dir}}"
+    $setupExe = Get-Item (Join-Path $setupPath setup.exe) -ErrorAction SilentlyContinue
+
+    Write-Host "Beginning SQL Server Installation..."
+    # Remove any configuration settings set to an empty string
+    (Get-Content "{{pkg.svc_config_install_path}}/config.ini" | ? { !$_.EndsWith("`"`"") }) | Set-Content "{{pkg.svc_config_install_path}}/config.ini"
+    ."$setupExe" /configurationfile={{pkg.svc_config_install_path}}/config.ini /Q
+    if($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
+# Invoke this DSC which simply enables the clustering windows features
+Import-Module "{{pkgPathFor "core/dsc-core"}}/Modules/DscCore"
+Start-DscCore (Join-Path {{pkg.svc_config_install_path}} cluster.ps1) EnableFailover
+
+Invoke-Command -ComputerName localhost -EnableNetworkAccess -ArgumentList (,($secondary + $primary)) {
+    param ($nodes)
+    $ProgressPreference="SilentlyContinue"
+
+    $featureState = (Get-WindowsFeature Failover-Clustering).InstallState
+    if($featureState -eq "InstallPending") {
+        Restart-Computer # that's right
+        # Cast a sleep spell to prevent us from doing anything further
+        # until the reboot actually occurs
+        while($true) { Start-sleep -Seconds 1 }
+    }
+}

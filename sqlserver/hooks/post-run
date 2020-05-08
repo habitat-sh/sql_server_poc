@@ -1,0 +1,29 @@
+# Create application Users
+
+if('{{cfg.app_user}}' -ne '') {
+  $instance="{{cfg.instance}}"
+  $listening = $false
+  while(!$listening) {
+    Write-Host "waiting for sql server to start accepting connections..."
+    Start-Sleep -Seconds 3
+    try{
+      $listening = New-Object System.Net.Sockets.TCPClient -ArgumentList localhost,{{cfg.port}} -ErrorAction SilentlyContinue | ? { $_.Connected }
+    } catch {}
+  }
+
+  $saPassword = ConvertTo-SecureString '{{cfg.sa_password}}' -AsPlainText -Force
+  $saCred = New-Object System.Management.Automation.PSCredential ('sa', $saPassword)
+
+  if(!(Get-SqlLogin -LoginName {{cfg.app_user}} -Credential $saCred -ServerInstance "localhost\$instance" -ErrorAction SilentlyContinue)) {
+    Write-Host "Starting application user setup..."
+    if('{{cfg.app_password}}' -eq '') {
+      add-SqlLogin -LoginName {{cfg.app_user}} -Credential $saCred -ServerInstance "localhost\$instance" -LoginType WindowsUser -Enable -GrantConnectSql
+    } else {
+      $loginPassword = ConvertTo-SecureString '{{cfg.app_password}}' -AsPlainText -Force
+      $loginCred = New-Object System.Management.Automation.PSCredential ('{{cfg.app_user}}', $loginPassword)
+      add-SqlLogin -LoginName {{cfg.app_user}} -Credential $saCred -ServerInstance "localhost\$instance" -LoginType SqlLogin -LoginPSCredential $loginCred -Enable -GrantConnectSql
+    }
+    Invoke-Sqlcmd -Credential $saCred -ServerInstance "localhost\$instance" -Query "create user [{{cfg.app_user}}] for login [{{cfg.app_user}}]"
+    Write-Host "Application user setup complete"
+  }
+}

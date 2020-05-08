@@ -1,0 +1,15 @@
+$saPassword = ConvertTo-SecureString '{{cfg.sa_password}}' -AsPlainText -Force
+$saCred = New-Object System.Management.Automation.PSCredential ('sa', $saPassword)
+$instance="{{cfg.instance}}"
+$result = $null
+try {
+    $result = Invoke-Sqlcmd -Credential $saCred -ServerInstance "localhost\$instance" -Query "select name from sys.databases" -ErrorAction SilentlyContinue
+} catch {}
+
+if($result -eq $null) {
+    exit 2
+} elseif($result.name.contains("master")) {
+    exit 0
+} else {
+    exit 3
+}

@@ -1,0 +1,6 @@
+port = 8099
+app_pool = "hab_pool"
+app_name = "hab_app"
+site_name = "hab_site"
+pool_identity_user = "Administrator"
+pool_identity_password = "Pass@word1!!!"

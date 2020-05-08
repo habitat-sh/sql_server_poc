@@ -1,0 +1,33 @@
+# Configure the instance for the configured port
+if ((Get-ItemProperty -Path  "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\MSSQL14.{{cfg.instance}}\MSSQLServer\SuperSocketNetLib\Tcp\IPAll").TcpPort -ne {{cfg.port}}) {
+    Write-Host "Setting SQL Server port..."
+    Set-ItemProperty -Path  "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\MSSQL14.{{cfg.instance}}\MSSQLServer\SuperSocketNetLib\Tcp\IPAll" -Name TcpPort -Value {{cfg.port}}
+    if($(Get-Service 'MSSQL${{cfg.instance}}').Status -eq "Running") {
+        Stop-Service 'MSSQL${{cfg.instance}}'
+    }
+}
+
+if($(Get-Service 'MpsSvc').Status -eq "Running") {
+    Import-Module "{{pkgPathFor "core/dsc-core"}}/Modules/DscCore"
+    Start-DscCore (Join-Path {{pkg.svc_config_path}} firewall.ps1) NewFirewallRule
+}
+
+Start-Service 'MSSQL${{cfg.instance}}'
+Write-Host "{{pkg.name}} is running"
+
+try {
+    while($(Get-Service 'MSSQL${{cfg.instance}}').Status -eq "Running" -or (Get-Process update -ErrorAction SilentlyContinue)) {
+        Start-Sleep -Seconds 1
+    }
+}
+finally {
+    $currentStatus = (Get-Service 'MSSQL${{cfg.instance}}').Status
+    if($currentStatus -eq "StopPending") {
+        Write-Host "Waiting for {{pkg.name}} to stop..."
+        while($currentStatus -eq "StopPending") {
+            Start-Sleep -Seconds 5
+            $currentStatus = (Get-Service 'MSSQL${{cfg.instance}}').Status
+        }
+        Write-Host "{{pkg.name}} has stopped"
+    }
+}

@@ -1,0 +1,39 @@
+Invoke-Command -ComputerName localhost -EnableNetworkAccess {
+    $ProgressPreference="SilentlyContinue"
+    Write-Host "Checking for nuget package provider..."
+    if(!(Get-PackageProvider -Name nuget -ErrorAction SilentlyContinue -ListAvailable)) {
+        Write-Host "Installing Nuget provider..."
+        Install-PackageProvider -Name NuGet -Force | Out-Null
+    }
+    Write-Host "Checking for xNetworking PS module..."
+    if(!(Get-Module xNetworking -ListAvailable)) {
+        Write-Host "Installing xNetworking PS Module..."
+        Install-Module xNetworking -Force | Out-Null
+    }
+}
+
+Write-Host "Checking for SqlServer PS module in core environment..."
+if(!(Get-Module SqlServer -ListAvailable)) {
+    Write-Host "Installing SqlServer PS Module in core environment..."
+    Install-Module SqlServer -Force -Scope AllUsers
+}
+
+# If the sql instance data is not present, install a new instance
+if (!(Test-Path {{pkg.svc_data_path}}/mssql14.{{cfg.instance}})) {
+    $setupPath = "{{cfg.install_media_dir}}"
+    $setupExe = Get-Item (Join-Path $setupPath setup.exe) -ErrorAction SilentlyContinue
+
+    Write-Host "Beginning SQL Server Installation..."
+    # Remove any configuration settings set to an empty string
+    (Get-Content "{{pkg.svc_config_install_path}}/config.ini" | ? { !$_.EndsWith("`"`"") }) | Set-Content "{{pkg.svc_config_install_path}}/config.ini"
+    ."$setupExe" /configurationfile={{pkg.svc_config_install_path}}/config.ini /Q
+    if($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
+$sqlexe = Get-Item "$env:ProgramFiles\Microsoft SQL Server\MSSQL14.{{cfg.instance}}\MSSQL\Binn\sqlservr.exe" -ErrorAction SilentlyContinue
+if($sqlexe) {
+    if([Version]::new($sqlexe.VersionInfo.ProductVersion) -lt [Version]::new('{{pkg.version}}')) {
+        Write-Host "Patching to {{pkg.version}}..."
+        Start-Process SQLServer2017-KB4541283-x64.exe -ArgumentList "/q /IAcceptSQLServerLicenseTerms /Action=Patch /AllInstances" -Wait
+    }
+}

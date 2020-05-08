@@ -1,0 +1,2 @@
+pool_identity_user = "${domain}\\${user}"
+pool_identity_password = "${password}"

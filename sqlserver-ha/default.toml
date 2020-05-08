@@ -1,0 +1,24 @@
+sa_password="Pass@word1"
+port=8888
+app_user="hab"
+app_password="h@b1Tat"
+instance="hab_sql_server"
+sys_admin_account="Administrator"
+svc_account="NT AUTHORITY\\Network Service"
+svc_account_password=""
+features="SQLEngine"
+install_media_dir="C:/sql_setup"
+cu_media_dir="C:/cu"
+
+endpoint_port=5022
+probe_port=59999
+availability_group_name="AG"
+availability_group_ip=""
+availability_group_failover_threshold=1
+backup_path="\\\\$env:computername\\backup"
+databases="''"
+cluster_name="sql"
+cluster_ip=""
+failover_mode="Automatic"
+availability_mode="SynchronousCommit"
+witness_path=""

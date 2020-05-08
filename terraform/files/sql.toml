@@ -1,0 +1,11 @@
+sys_admin_account="${domain}\\${user}"
+svc_account="${domain}\\${user}"
+svc_account_password="${password}"
+install_media_dir="C:/sql_setup"
+cu_media_dir="C:/cu"
+
+availability_group_ip="10.0.10.201"
+availability_group_failover_threshold=1000
+cluster_ip="10.0.10.200"
+databases="'ContosoUniversity2'"
+witness_path="\\\\${dc_name}\\witness"
