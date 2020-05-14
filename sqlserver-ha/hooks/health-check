@@ -1,0 +1,26 @@
+Import-Module SqlServer -DisableNameChecking
+$instance="{{cfg.instance}}"
+$svr = New-Object ('Microsoft.SqlServer.Management.Smo.Server') "$env:ComputerName\$instance"
+$databases = @({{cfg.databases}})
+
+if(Get-Process update -ErrorAction SilentlyContinue) {
+    Write-Host "SQL Server patching in progress. Databases on this instance may become temporarily unreachable or out of synchronization."
+}
+
+foreach($db in $databases) {
+    if($svr.Databases[$db] -eq $null) {
+        Write-Host "data base $db is unreachable"
+        exit 2
+    }
+    if($svr.Databases[$db].AvailabilityDatabaseSynchronizationState -ne 'Synchronized') {
+        Write-Host "database $db is not synchronized"
+        exit 2
+    }
+}
+
+if('{{pkg.version}}' -ne $svr.Version.ToString()) {
+    Write-Host "Database Engine not yet updated to {{pkg.version}} and remains at $($svr.Version.ToString())"
+    exit 1
+}
+
+exit 0
