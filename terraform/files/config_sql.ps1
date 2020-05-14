@@ -1,5 +1,7 @@
 param($User, $Password, $Domain, $SqlSharePath, $SqlShareUser, $SqlSharePassword)
 
+$ProgressPreference = 'SilentlyContinue'
+
 Write-Host "Downloading sql server 2017 cu 20..."
 mkdir c:\cu
 Invoke-WebRequest https://download.microsoft.com/download/C/4/F/C4F908C9-98ED-4E5F-88D5-7D6A5004AEBD/SQLServer2017-KB4541283-x64.exe -OutFile c:\cu\update.exe
