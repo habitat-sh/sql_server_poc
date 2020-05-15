@@ -92,44 +92,27 @@ variable "channel" {
   description = "channel is the habitat channel which will be used for installing A2"
 }
 
-variable "automate_license" {
-  default = "Contact Chef Sales at sales@chef.io to request a license."
-  description = "automate_license is the license key for your A2 installation"
+variable "automate_application" {
+  default = "sqlserver-ha"
+  description = "application name for automate application view"
 }
 
-variable "automate_app_gateway_dns_zone" {
-  default = "azure.chef-demo.com"
-  description = "Matcher to find the Azure DNS zone"
+variable "automate_environment" {
+  default = "demo"
+  description = "environment name for automate application view"
 }
 
-variable "acme_provider_url" {
-  default = "https://acme-staging-v02.api.letsencrypt.org/directory"
-  description = <<EOF
-An API endpoint URL for an ACME-compliant CA.  We default to LetsEncrypt staging endpoint.
-This will issue certs, but the certs will not be valid.
-
-For valid certs from LetsEncrypt, use https://acme-v02.api.letsencrypt.org/directory
-EOF
+variable "automate_site" {
+  default = "us-west-2"
+  description = "site name for automate application view"
 }
 
-variable "automate_custom_ssl" {
-  default = "false"
-  description = "Enable to configure automate with the below certificate"
+variable "automate_ip" {
+  description = "ip address of automate instance"
 }
 
-variable "automate_custom_ssl_private_key" {
-  default="Paste private key here"
-  description = "automate_private_key is the SSL private key that will be used to congfigure HTTPS for A2"
-}
-
-variable "automate_custom_ssl_cert_chain" {
-  default="Paste certificate chain here"
-  description = "automate_cert_chain is the SSL certificate chain that will be used to congfigure HTTPS for A2"
-}
-
-variable "automate_server_instance_type" {
- default = "Standard_D4s_v3"
- description = "automate_server_instance_type is the AWS instance type to be used for A2"
+variable "automate_token" {
+  description = "token for automate instance"
 }
 
 variable "domain_name" {

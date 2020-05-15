@@ -210,7 +210,7 @@ resource "azurerm_virtual_machine" "sql" {
   }
   provisioner "remote-exec" {
     inline = [
-      "PowerShell.exe -ExecutionPolicy Bypass -command \"c:/terraform/bootstrap_hab.ps1 -PermanentPeer ${azurerm_network_interface.dc_nic.private_ip_address}\"",
+      "PowerShell.exe -ExecutionPolicy Bypass -command \"c:/terraform/bootstrap_hab.ps1 -PermanentPeer ${azurerm_network_interface.dc_nic.private_ip_address} -AutomateApp '${var.automate_application}' -AutomateEnv '${var.automate_environment}' -AutomateSite '${var.automate_site}' -AutomateToken '${var.automate_token}' -AutomateIp '${var.automate_ip}'\"",
     ]
   }
   provisioner "remote-exec" {
