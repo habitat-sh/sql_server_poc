@@ -6,7 +6,6 @@ Write-Host "Downloading sql server 2017 cu 20..."
 mkdir c:\cu
 Invoke-WebRequest https://download.microsoft.com/download/C/4/F/C4F908C9-98ED-4E5F-88D5-7D6A5004AEBD/SQLServer2017-KB4541283-x64.exe -OutFile c:\cu\update.exe
 
-# Authenticate to azure file share where sql enterprise is stored and copy it locally
 mkdir c:\sql_setup_temp
 Invoke-WebRequest https://download.microsoft.com/download/5/2/2/522EE642-941E-47A6-8431-57F0C2694EDF/SQLServer2017-SSEI-Eval.exe -OutFile c:\sql_setup_temp\sqlsvr.exe
 Start-Process c:\sql_setup_temp\sqlsvr.exe -ArgumentList "/ACTION=Download /MEDIAPATH=c:\sql_setup_temp /MEDIATYPE=Cab /QUIET" -Wait
