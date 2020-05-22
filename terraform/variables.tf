@@ -108,10 +108,12 @@ variable "automate_site" {
 }
 
 variable "automate_ip" {
+  default = ""
   description = "ip address of automate instance"
 }
 
 variable "automate_token" {
+  default = ""
   description = "token for automate instance"
 }
 
