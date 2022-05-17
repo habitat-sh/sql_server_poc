@@ -1,6 +1,6 @@
 $pkg_name = "sqlserver-ha"
 $pkg_origin = "mwrock"
-$pkg_version = "14.0.3294"
+$pkg_version = "14.0.1000"
 $pkg_maintainer = "The Habitat Maintainers "
 $pkg_deps=@("core/dsc-core")
 $pkg_exports=@{

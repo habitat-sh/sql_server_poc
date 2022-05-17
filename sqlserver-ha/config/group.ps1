@@ -14,9 +14,10 @@ Configuration NewAvailabilityGroup
 {
     Import-DscResource -ModuleName SqlServerDsc
     Node 'localhost' {
-        SqlServerEndpoint 'AddEndpoint'
+        SqlEndpoint 'AddEndpoint'
         {
             EndpointName = "HADR-${env:computername}"
+            EndpointType = 'DatabaseMirroring'
             InstanceName = $instance
             ServerName   = $env:computername
             Port         = '{{cfg.endpoint_port}}'
@@ -34,9 +35,10 @@ Configuration NewAvailabilityGroup
 
         foreach($s in $secondary) {
 
-            SqlServerEndpoint "AddEndpoint-$s"
+            SqlEndpoint "AddEndpoint-$s"
             {
                 EndpointName = "HADR-$s"
+                EndpointType = 'DatabaseMirroring'
                 InstanceName = $instance
                 ServerName   = $s
                 Port         = '{{cfg.endpoint_port}}'
