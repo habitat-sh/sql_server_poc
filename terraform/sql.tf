@@ -180,10 +180,6 @@ resource "azurerm_virtual_machine" "sql" {
     destination = "c:/terraform/config_sql.ps1"
   }
   provisioner "file" {
-    source      = "files/config_sql2.ps1"
-    destination = "c:/terraform/config_sql2.ps1"
-  }
-  provisioner "file" {
     source      = "files/LsaWrapper.cs"
     destination = "c:/terraform/LsaWrapper.cs"
   }
@@ -225,15 +221,6 @@ resource "azurerm_virtual_machine" "sql" {
   provisioner "remote-exec" {
     inline = [
       "PowerShell.exe -ExecutionPolicy Bypass -command \"c:/terraform/config_sql.ps1 -User ${var.azure_image_user} -Password '${var.azure_image_password}' -Domain ${var.domain_name}\"",
-    ]
-  }
-  provisioner "local-exec" {
-    working_dir = "files"
-    command = "sleep 60"
-  }
-  provisioner "remote-exec" {
-    inline = [
-      "PowerShell.exe -ExecutionPolicy Bypass -command \"c:/terraform/config_sql2.ps1 -User ${var.azure_image_user} -Password '${var.azure_image_password}' -Domain ${var.domain_name}\"",
     ]
   }
 }

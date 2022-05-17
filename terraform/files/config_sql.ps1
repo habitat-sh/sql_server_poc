@@ -47,11 +47,10 @@ Restart-Service -Name Habitat
 # each time progress increments and fills the console buffer
 hab pkg install mwrock/sqlserver-ha/14.0.1000 --ignore-install-hook --channel unstable
 
-hab svc load mwrock/sqlserver-ha
+hab svc load mwrock/sqlserver-ha -s at-once --channel sql_update
 
 # We expect a reboot to be required after enabling the windows failovering
-# features. Although there is still more to be done in provisioning. We should
-# just wait for the reboot and continue in config_sql2 - the exciting conclusion.
+# features.
 Write-Host "Waiting for machine to require reboot..."
 $featureState = (Get-WindowsFeature Failover-Clustering).InstallState
 while($featureState -ne "InstallPending") {
