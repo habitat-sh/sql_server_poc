@@ -7,6 +7,10 @@ SETX HAB_LICENSE accept-no-persist /m
 $env:HAB_LICENSE="accept-no-persist"
 
 Set-ExecutionPolicy Bypass -Scope Process -Force
+# Add windows defender exclusions for hab binary
+Add-MpPreference -ExclusionPath C:\Users\azureuser\AppData\Local\Temp\*\*\*\hab.exe
+Add-MpPreference -ExclusionPath C:\ProgramData\Habitat\hab.exe
+
 Invoke-Expression (Invoke-WebRequest https://raw.githubusercontent.com/habitat-sh/habitat/master/components/hab/install.ps1)
 
 # seen this randomly fail with flaky internet errors
